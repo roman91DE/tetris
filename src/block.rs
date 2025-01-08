@@ -94,13 +94,13 @@ impl Block {
                     origin.get_x() - relative_y,
                     origin.get_y() + relative_x,
                 ))
-                .expect("Failed to push coordinate");
+                .?
         }
 
-        Block {
+        Ok(Block {
             shape: self.shape,
             coordinates: new_coordinates,
-        }
+        })
     }
 }
 
