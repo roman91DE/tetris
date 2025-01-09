@@ -1,12 +1,10 @@
 #![allow(unused)]
-
 use std::error::Error;
-
+use std::fmt;
 use crate::point::Point;
 use arrayvec::ArrayVec;
-use strum::IntoEnumIterator; // Import the trait for iteration
-use strum_macros::EnumIter;  // Derive macro for enum iteration
-
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub enum BlockShape {
@@ -24,6 +22,21 @@ pub struct Block {
     shape: BlockShape,
     pub coordinates: ArrayVec<Point, 4>,
 }
+
+
+#[derive(Debug)]
+struct RotationError {
+    message: String,
+}
+
+impl fmt::Display for RotationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for RotationError {}
+
 
 impl Block {
     pub fn new(origin: Point, shape: BlockShape) -> Block {
@@ -72,43 +85,64 @@ impl Block {
                 Point::new(2, 1),
             ],
         };
-        let coordinates = relative_coordinates.iter().map(|p| p.add(&origin)).collect();
+        let coordinates = relative_coordinates
+            .iter()
+            .map(|p| p.add(&origin))
+            .collect();
 
         Block { shape, coordinates }
     }
 
-    /// Rotates the block 90 degrees clockwise
+    /// Rotates the block 90 degrees clockwise around its geometric center
     pub fn rotate(&self) -> Result<Block, Box<dyn Error>> {
         if self.shape == BlockShape::Square {
             return Ok(self.clone());
         }
 
-        // Use the center of rotation (for simplicity, the first point in `coordinates`)
-        let origin = self.coordinates[0];
+        // Calculate the geometric center of the block
+        let center_x = self.coordinates.iter().map(|p| p.get_x()).sum::<i32>() as f32
+            / self.coordinates.len() as f32;
+        let center_y = self.coordinates.iter().map(|p| p.get_y()).sum::<i32>() as f32
+            / self.coordinates.len() as f32;
+
         let mut new_coordinates = ArrayVec::new();
 
         // Perform rotation for each point
         for coord in self.coordinates.iter() {
-            // Translate point to origin
-            let relative_x = coord.get_x() - origin.get_x();
-            let relative_y = coord.get_y() - origin.get_y();
+            // Translate point to the geometric center
+            let relative_x = coord.get_x() as f32 - center_x;
+            let relative_y = coord.get_y() as f32 - center_y;
 
             // Apply 90-degree clockwise rotation
-            new_coordinates
-                .try_push(Point::new(
-                    origin.get_x() - relative_y,
-                    origin.get_y() + relative_x,
-                ))?
+            let rotated_x = center_x - relative_y;
+            let rotated_y = center_y + relative_x;
+
+            // Translate back and round to the nearest integer
+            new_coordinates.try_push(Point::new(
+                rotated_x.round() as i32,
+                rotated_y.round() as i32,
+            ))?;
         }
 
-        Ok(Block {
+        let new_block = Block {
             shape: self.shape,
             coordinates: new_coordinates,
-        })
+        };
+
+        if new_block.not_negative() {
+            Ok(new_block)
+        } else {
+            Err(Box::new(RotationError {
+                message: "Rotation resulted in negative coordinates".to_string(),
+            }))
+        }
     }
+
+    pub fn not_negative(&self) -> bool {
+        self.coordinates.iter().all(|f| f.not_negative())
+    }
+
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -154,9 +188,11 @@ mod tests {
             Point::new(0, 2),
             Point::new(0, 3),
         ];
-        assert_eq!(rotated_block.unwrap().coordinates.as_slice(), &expected_coordinates);
+        assert_eq!(
+            rotated_block.unwrap().coordinates.as_slice(),
+            &expected_coordinates
+        );
     }
-
 
     #[test]
     fn test_block_rotation_square() {
@@ -181,7 +217,7 @@ mod tests {
     //         // After four rotations, the block should return to its original state
     //         assert_eq!(block.coordinates, rotated_four_times.coordinates);
     //     }
-        
+
     // }
 
     #[test]
@@ -224,7 +260,10 @@ mod tests {
             Point::new(5, 7),
             Point::new(5, 8),
         ];
-        assert_eq!(rotated_block.unwrap().coordinates.as_slice(), &expected_coordinates);
+        assert_eq!(
+            rotated_block.unwrap().coordinates.as_slice(),
+            &expected_coordinates
+        );
     }
 
     #[test]
