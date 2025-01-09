@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point {
     x: i32,

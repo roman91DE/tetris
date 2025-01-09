@@ -1,4 +1,4 @@
-use crate::block::{Block, BlockShape};
+use crate::block::Block;
 use crate::point::Point;
 
 pub struct Board {
@@ -21,7 +21,7 @@ impl Board {
     }
 
     pub fn clear_board(&mut self) {
-        // Count how many points are in each row (y-coordinate)
+        // Identify rows that need to be cleared
         let mut row_counts = vec![0; self.y_dim as usize];
         for point in &self.filled {
             if point.get_y() >= 0 && point.get_y() < self.y_dim {
@@ -29,42 +29,47 @@ impl Board {
             }
         }
 
-        // Identify fully filled rows
-        let mut completed_rows = Vec::new();
-        for (y, &count) in row_counts.iter().enumerate() {
-            if count == self.x_dim {
-                completed_rows.push(y as i32);
-            }
+        // Collect rows that are completely filled
+        let completed_rows: Vec<i32> = row_counts
+            .iter()
+            .enumerate()
+            .filter(|(_, &count)| count == self.x_dim)
+            .map(|(y, _)| y as i32)
+            .collect();
+
+        if completed_rows.is_empty() {
+            return;
         }
 
-        // Remove points in completed rows
-        self.filled
-            .retain(|point| !completed_rows.contains(&point.get_y()));
+        // Remove points in the completed rows
+        self.filled.retain(|point| !completed_rows.contains(&point.get_y()));
 
-        // Shift points above cleared rows downward
-        for point in &mut self.filled {
-            let rows_above = completed_rows
-                .iter()
-                .filter(|&&row| row < point.get_y())
-                .count() as i32;
-            *point = Point::new(point.get_x(), point.get_y() - rows_above);
+        // Apply gravity: shift points down by one for each cleared row below them
+        for cleared_row in completed_rows.iter() {
+            self.filled.iter_mut().for_each(|point| {
+                if point.get_y() < *cleared_row {
+                    *point = Point::new(point.get_x(), point.get_y() + 1);
+                }
+            });
         }
+
+        // Sort filled points to maintain consistent rendering
+        self.filled.sort_by_key(|p| (p.get_y(), p.get_x()));
     }
 
     pub fn block_touches(&self, block: &Block) -> bool {
+        // Check for overlapping with filled cells
         for block_point in &block.coordinates {
             for filled_point in &self.filled {
-                let dx = (block_point.get_x() - filled_point.get_x()).abs();
-                let dy = (block_point.get_y() - filled_point.get_y()).abs();
-
-                // Check if the block point touches or overlaps a filled point
-                if (dx == 0 && dy == 1) || (dx == 1 && dy == 0) || (dx == 0 && dy == 0) {
+                if block_point.get_x() == filled_point.get_x()
+                    && block_point.get_y() == filled_point.get_y()
+                {
                     return true;
                 }
             }
         }
 
-        // Also check if any block point touches the bottom of the board
+        // Check if any block point touches or goes beyond the bottom of the board
         for block_point in &block.coordinates {
             if block_point.get_y() >= self.y_dim {
                 return true;
@@ -150,6 +155,7 @@ mod board_tests {
 #[cfg(test)]
 mod board_block_tests {
     use super::*;
+    use crate::block::BlockShape;
 
     #[test]
     fn test_block_touches_filled() {
@@ -158,7 +164,7 @@ mod board_block_tests {
 
         let block = Block::new(Point::new(1, 2), BlockShape::Line);
 
-        // Block touches the filled points
+        // Block touches the filled points (overlapping)
         assert!(board.block_touches(&block));
 
         let non_touching_block = Block::new(Point::new(3, 0), BlockShape::Line);
@@ -193,7 +199,7 @@ mod board_block_tests {
         ];
 
         board.sort_filled();
-        expected_filled.sort_by_key(|p| (p.get_x(), p.get_y())); // Sort by y, then x
+        expected_filled.sort_by_key(|p| (p.get_y(), p.get_x())); // Sort by y, then x
 
         assert_eq!(board.filled, expected_filled);
     }

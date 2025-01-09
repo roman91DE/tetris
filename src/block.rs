@@ -1,9 +1,11 @@
-#![allow(unused)]
 use crate::point::Point;
 use arrayvec::ArrayVec;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use std::error::Error;
 use std::fmt;
-use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
@@ -15,6 +17,28 @@ pub enum BlockShape {
     LRev,
     Z,
     ZRev,
+}
+
+impl Distribution<BlockShape> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockShape {
+        match rng.gen_range(0..6) {
+            // rand 0.8
+            0 => BlockShape::Square,
+            1 => BlockShape::Line,
+            2 => BlockShape::T,
+            3 => BlockShape::L,
+            4 => BlockShape::LRev,
+            5 => BlockShape::Z,
+            _ => BlockShape::ZRev,
+        }
+    }
+}
+
+impl BlockShape {
+    pub fn get_rand() -> BlockShape {
+        let shape: BlockShape = rand::random();
+        shape
+    }
 }
 
 #[derive(Clone)]
@@ -91,6 +115,35 @@ impl Block {
         Block { shape, coordinates }
     }
 
+    pub fn translate(
+        &self,
+        dx: i32,
+        dy: i32,
+        board_width: i32,
+        board_height: i32,
+    ) -> Option<Block> {
+        let translated_coordinates: ArrayVec<Point, 4> = self
+            .coordinates
+            .iter()
+            .map(|point| Point::new(point.get_x() + dx, point.get_y() + dy))
+            .collect();
+
+        // Check if all points are within bounds
+        if translated_coordinates.iter().all(|point| {
+            point.get_x() >= 0
+                && point.get_x() < board_width
+                && point.get_y() >= 0
+                && point.get_y() < board_height
+        }) {
+            Some(Block {
+                shape: self.shape,
+                coordinates: translated_coordinates,
+            })
+        } else {
+            None
+        }
+    }
+
     /// Rotates the block 90 degrees clockwise around its geometric center
     pub fn rotate(&self) -> Result<Block, Box<dyn Error>> {
         if self.shape == BlockShape::Square {
@@ -140,24 +193,24 @@ impl Block {
         self.coordinates.iter().all(|f| f.not_negative())
     }
 
-    pub fn push_down(&self) -> Result<Block, Box<dyn Error>> {
-        let drop_point = Point::new(0, 1);
-        let new_block = Block {
-            shape: self.shape,
-            coordinates: self
-                .coordinates
-                .iter()
-                .map(|p| p.add(&drop_point))
-                .collect(),
-        };
-        if new_block.not_negative() {
-            Ok(new_block)
-        } else {
-            Err(Box::new(BlockMoveError {
-                message: "Push-Down resulted in negative coordinates".to_string(),
-            }))
-        }
-    }
+    // pub fn push_down(&self) -> Result<Block, Box<dyn Error>> {
+    //     let drop_point = Point::new(0, 1);
+    //     let new_block = Block {
+    //         shape: self.shape,
+    //         coordinates: self
+    //             .coordinates
+    //             .iter()
+    //             .map(|p| p.add(&drop_point))
+    //             .collect(),
+    //     };
+    //     if new_block.not_negative() {
+    //         Ok(new_block)
+    //     } else {
+    //         Err(Box::new(BlockMoveError {
+    //             message: "Push-Down resulted in negative coordinates".to_string(),
+    //         }))
+    //     }
+    // }
 }
 
 #[cfg(test)]
@@ -202,30 +255,29 @@ mod tests {
         assert_eq!(block.coordinates, rotated_block.unwrap().coordinates);
     }
 
-    #[test]
-    fn test_block_pushdown_square() {
-        let origin = Point::new(4, 4);
-        let block = Block::new(origin, BlockShape::Square);
-        let pushed_down = block.push_down().unwrap();
+    // #[test]
+    // fn test_block_pushdown_square() {
+    //     let origin = Point::new(4, 4);
+    //     let block = Block::new(origin, BlockShape::Square);
+    //     let pushed_down = block.push_down().unwrap();
 
-        let expected_coordinates = [
-            Point::new(4, 5),
-            Point::new(5, 5),
-            Point::new(4, 6),
-            Point::new(5, 6),
-        ];
+    //     let expected_coordinates = [
+    //         Point::new(4, 5),
+    //         Point::new(5, 5),
+    //         Point::new(4, 6),
+    //         Point::new(5, 6),
+    //     ];
 
-        // Square blocks should remain unchanged after rotation
-        assert_eq!(pushed_down.coordinates.as_slice(), &expected_coordinates);
-    }
+    //     // Square blocks should remain unchanged after rotation
+    //     assert_eq!(pushed_down.coordinates.as_slice(), &expected_coordinates);
+}
 
-    #[test]
-    fn test_clone_behavior() {
-        let origin = Point::new(0, 0);
-        let block = Block::new(origin, BlockShape::T);
-        let cloned_block = block.clone();
+#[test]
+fn test_clone_behavior() {
+    let origin = Point::new(0, 0);
+    let block = Block::new(origin, BlockShape::T);
+    let cloned_block = block.clone();
 
-        assert_eq!(block.coordinates, cloned_block.coordinates);
-        assert_eq!(block.shape, cloned_block.shape);
-    }
+    assert_eq!(block.coordinates, cloned_block.coordinates);
+    assert_eq!(block.shape, cloned_block.shape);
 }

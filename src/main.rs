@@ -1,153 +1,165 @@
-use crossterm::{
-    cursor,
-    event::{self, Event, KeyCode},
-    execute,
-    style::{Color, Stylize},
-    terminal::{self, ClearType},
-};
-use std::{
-    io::{stdout, Write},
-    time::{Duration, Instant},
-};
-
-mod point;
 mod block;
 mod board;
+mod point;
 
-use block::{Block, BlockShape};
-use board::Board;
-use point::Point;
+use crate::block::{Block, BlockShape};
+use crate::board::Board;
+use crate::point::Point;
+use crossterm::event::{Event, KeyCode};
+use crossterm::{event, execute, terminal};
+use std::io::{self};
+use std::time::{Duration, Instant};
+use tui::backend::CrosstermBackend;
+use tui::layout::{Constraint, Direction, Layout};
+use tui::widgets::{Block as TuiBlock, Borders, Paragraph};
+use tui::Terminal;
 
-fn draw_board(board: &Board, current_block: &Block) {
-    let mut stdout = stdout();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Setup terminal
+    terminal::enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, terminal::EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
 
-    // Clear the terminal
-    execute!(stdout, terminal::Clear(ClearType::All)).unwrap();
-
-    // Draw the board boundary
-    for y in 0..board.y_dim {
-        for x in 0..board.x_dim {
-            let is_filled = board
-                .filled
-                .iter()
-                .any(|p| p.get_x() == x && p.get_y() == y);
-            let is_block = current_block
-                .coordinates
-                .iter()
-                .any(|p| p.get_x() == x && p.get_y() == y);
-
-            if is_filled || is_block {
-                print!("{}", "[]".with(Color::Blue));
-            } else {
-                print!("  ");
-            }
-        }
-        println!(); // Newline after each row
-    }
-
-    stdout.flush().unwrap();
-}
-fn main() {
-    // Initialize terminal
-    terminal::enable_raw_mode().unwrap();
-    let mut stdout = stdout();
-    execute!(stdout, terminal::EnterAlternateScreen).unwrap();
-    execute!(stdout, cursor::Hide).unwrap();
-
-    // Get terminal size
-    let (term_width, term_height) = terminal::size().unwrap();
-
-    // Adjust board size to fit the terminal
-    let x_dim = (term_width / 2).min(20); // Each cell is "[]" = 2 characters wide
-    let y_dim = term_height.min(20);
-
-    // Create a new board with dimensions fitting the terminal
-    let mut board = Board::new(x_dim as usize, y_dim as usize);
-    let mut current_block = Block::new(Point::new((x_dim / 2) as i32 - 1, 0), BlockShape::T);
-
-
-
+    // Initialize game state
+    let mut board = Board::new(10, 20); // 10x20 board
+    let mut current_block = Block::new(Point::new(4, 0), BlockShape::get_rand()); // Start with a Line block
+    let mut game_over = false;
     let mut last_tick = Instant::now();
+    let tick_rate = Duration::from_millis(500);
 
     loop {
-        // Check for user input
-        if event::poll(Duration::from_millis(10)).unwrap() {
-            if let Event::Key(key_event) = event::read().unwrap() {
-                match key_event.code {
+        // Draw the game state
+        terminal.draw(|f| {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(90), Constraint::Percentage(10)])
+                .split(f.size());
+
+            let board_widget = draw_board(&board, &current_block);
+            f.render_widget(board_widget, chunks[0]);
+
+            let controls = Paragraph::new("Controls: ←, →, ↓ to move; R to rotate; Q to quit")
+                .block(TuiBlock::default().borders(Borders::ALL).title("Controls"));
+            f.render_widget(controls, chunks[1]);
+        })?;
+
+        // Handle user input
+        if event::poll(Duration::from_millis(50))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
                     KeyCode::Left => {
-                        let moved_block = Block {
-                            coordinates: current_block
-                                .coordinates
-                                .iter()
-                                .map(|p| p.add(&Point::new(-1, 0)))
-                                .collect(),
-                            ..current_block.clone()
-                        };
-                        if moved_block.coordinates.iter().all(|p| p.get_x() >= 0 && p.get_x() < board.x_dim) {
-                            current_block = moved_block;
+                        if let Some(moved_block) =
+                            current_block.translate(-1, 0, board.x_dim, board.y_dim)
+                        {
+                            if !board.block_touches(&moved_block) {
+                                current_block = moved_block;
+                            }
                         }
                     }
                     KeyCode::Right => {
-                        let moved_block = Block {
-                            coordinates: current_block
-                                .coordinates
-                                .iter()
-                                .map(|p| p.add(&Point::new(1, 0)))
-                                .collect(),
-                            ..current_block.clone()
-                        };
-                        if moved_block.coordinates.iter().all(|p| p.get_x() >= 0 && p.get_x() < board.x_dim) {
-                            current_block = moved_block;
+                        if let Some(moved_block) =
+                            current_block.translate(1, 0, board.x_dim, board.y_dim)
+                        {
+                            if !board.block_touches(&moved_block) {
+                                current_block = moved_block;
+                            }
                         }
                     }
-                    
-                    KeyCode::Up => {
-                        // Rotate block
+                    KeyCode::Down => {
+                        if let Some(moved_block) =
+                            current_block.translate(0, 1, board.x_dim, board.y_dim)
+                        {
+                            if !board.block_touches(&moved_block) {
+                                current_block = moved_block;
+                            }
+                        }
+                    }
+                    KeyCode::Char('r') | KeyCode::Up => {
                         if let Ok(rotated_block) = current_block.rotate() {
                             if !board.block_touches(&rotated_block) {
                                 current_block = rotated_block;
                             }
                         }
                     }
-                    KeyCode::Down => {
-                        // Drop block faster
-                        if let Ok(dropped_block) = current_block.push_down() {
-                            if !board.block_touches(&dropped_block) {
-                                current_block = dropped_block;
-                            }
-                        }
+                    KeyCode::Char('q') | KeyCode::Char('Q') => {
+                        break;
                     }
-                    KeyCode::Char('q') => break, // Quit game
                     _ => {}
                 }
             }
         }
 
-        // Auto drop the block every 500ms
-        if last_tick.elapsed() >= Duration::from_millis(500) {
+        // Auto-drop block
+        if last_tick.elapsed() >= tick_rate {
             last_tick = Instant::now();
-            if let Ok(dropped_block) = current_block.push_down() {
-                if board.block_touches(&dropped_block) || dropped_block.coordinates.iter().any(|p| p.get_y() >= board.y_dim) {
+            if let Some(moved_block) = current_block.translate(0, 1, board.x_dim, board.y_dim) {
+                if board.block_touches(&moved_block) {
                     board.place_block(&current_block);
-                    current_block = Block::new(Point::new((x_dim / 2) as i32 - 1, 0), BlockShape::T);
                     board.clear_board();
+                    current_block = Block::new(Point::new(4, 0), BlockShape::get_rand());
+                    if board.block_touches(&current_block) {
+                        game_over = true;
+                    }
                 } else {
-                    current_block = dropped_block;
+                    current_block = moved_block;
                 }
-            }
-             else {
+            } else {
                 board.place_block(&current_block);
-                current_block = Block::new(Point::new((x_dim / 2 - 2) as i32, 0), BlockShape::T);
                 board.clear_board();
+                current_block = Block::new(Point::new(4, 0), BlockShape::get_rand());
+                if board.block_touches(&current_block) {
+                    game_over = true;
+                }
             }
         }
 
-        // Render the board
-        draw_board(&board, &current_block);
+        if game_over {
+            terminal.draw(|f| {
+                let size = f.size();
+                let game_over_widget = Paragraph::new("Game Over! Press 'Q' to quit.")
+                    .block(TuiBlock::default().borders(Borders::ALL).title("Game Over"));
+                f.render_widget(game_over_widget, size);
+            })?;
+            loop {
+                if let Event::Key(key) = event::read()? {
+                    if key.code == KeyCode::Char('q') || key.code == KeyCode::Char('Q') {
+                        break;
+                    }
+                }
+            }
+            break;
+        }
     }
 
-    // Cleanup terminal
-    execute!(stdout, cursor::Show).unwrap();
-    execute!(stdout, terminal::LeaveAlternateScreen).unwrap();
-    terminal::disable_raw_mode().unwrap();
+    // Restore terminal
+    terminal::disable_raw_mode()?;
+    execute!(terminal.backend_mut(), terminal::LeaveAlternateScreen)?;
+    Ok(())
+}
+
+fn draw_board<'a>(board: &Board, current_block: &Block) -> Paragraph<'a> {
+    let mut grid = vec![vec!['.'; board.x_dim as usize]; board.y_dim as usize];
+
+    // Mark filled points
+    for point in &board.filled {
+        if point.get_x() >= 0 && point.get_y() >= 0 {
+            grid[point.get_y() as usize][point.get_x() as usize] = '#';
+        }
+    }
+
+    // Mark current block
+    for point in &current_block.coordinates {
+        if point.get_x() >= 0 && point.get_y() >= 0 {
+            grid[point.get_y() as usize][point.get_x() as usize] = '*';
+        }
+    }
+
+    let board_string = grid
+        .into_iter()
+        .map(|row| row.into_iter().collect::<String>() + "\n")
+        .collect::<String>();
+
+    Paragraph::new(board_string).block(TuiBlock::default().borders(Borders::ALL).title("Board"))
 }
