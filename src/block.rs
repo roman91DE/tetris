@@ -19,7 +19,7 @@ pub enum BlockShape {
 
 #[derive(Clone)]
 pub struct Block {
-    shape: BlockShape,
+    pub shape: BlockShape,
     pub coordinates: ArrayVec<Point, 4>,
 }
 
