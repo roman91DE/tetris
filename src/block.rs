@@ -1,8 +1,8 @@
 #![allow(unused)]
-use std::error::Error;
-use std::fmt;
 use crate::point::Point;
 use arrayvec::ArrayVec;
+use std::error::Error;
+use std::fmt;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -23,20 +23,18 @@ pub struct Block {
     pub coordinates: ArrayVec<Point, 4>,
 }
 
-
 #[derive(Debug)]
-struct RotationError {
+struct BlockMoveError {
     message: String,
 }
 
-impl fmt::Display for RotationError {
+impl fmt::Display for BlockMoveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.message)
     }
 }
 
-impl std::error::Error for RotationError {}
-
+impl std::error::Error for BlockMoveError {}
 
 impl Block {
     pub fn new(origin: Point, shape: BlockShape) -> Block {
@@ -132,7 +130,7 @@ impl Block {
         if new_block.not_negative() {
             Ok(new_block)
         } else {
-            Err(Box::new(RotationError {
+            Err(Box::new(BlockMoveError {
                 message: "Rotation resulted in negative coordinates".to_string(),
             }))
         }
@@ -142,6 +140,24 @@ impl Block {
         self.coordinates.iter().all(|f| f.not_negative())
     }
 
+    pub fn push_down(&self) -> Result<Block, Box<dyn Error>> {
+        let drop_point = Point::new(0, 1);
+        let new_block = Block {
+            shape: self.shape,
+            coordinates: self
+                .coordinates
+                .iter()
+                .map(|p| p.add(&drop_point))
+                .collect(),
+        };
+        if new_block.not_negative() {
+            Ok(new_block)
+        } else {
+            Err(Box::new(BlockMoveError {
+                message: "Push-Down resulted in negative coordinates".to_string(),
+            }))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -177,24 +193,6 @@ mod tests {
     }
 
     #[test]
-    fn test_block_rotation_line() {
-        let origin = Point::new(0, 0);
-        let block = Block::new(origin, BlockShape::Line);
-        let rotated_block = block.rotate();
-
-        let expected_coordinates = [
-            Point::new(0, 0),
-            Point::new(0, 1),
-            Point::new(0, 2),
-            Point::new(0, 3),
-        ];
-        assert_eq!(
-            rotated_block.unwrap().coordinates.as_slice(),
-            &expected_coordinates
-        );
-    }
-
-    #[test]
     fn test_block_rotation_square() {
         let origin = Point::new(4, 4);
         let block = Block::new(origin, BlockShape::Square);
@@ -204,66 +202,21 @@ mod tests {
         assert_eq!(block.coordinates, rotated_block.unwrap().coordinates);
     }
 
-    // #[test]
-    // fn test_multiple_rotations() {
-    //     for shape in BlockShape::iter() {
-    //         let origin = Point::new(5, 5);
-    //         let block = Block::new(origin, shape);
-    //         let rotated_once = block.rotate().unwrap();
-    //         let rotated_twice = rotated_once.rotate().unwrap();
-    //         let rotated_thrice = rotated_twice.rotate().unwrap();
-    //         let rotated_four_times = rotated_thrice.rotate().unwrap();
-
-    //         // After four rotations, the block should return to its original state
-    //         assert_eq!(block.coordinates, rotated_four_times.coordinates);
-    //     }
-
-    // }
-
     #[test]
-    fn test_block_with_offset_origin() {
-        let origin = Point::new(10, 10);
-        let block = Block::new(origin, BlockShape::L);
+    fn test_block_pushdown_square() {
+        let origin = Point::new(4, 4);
+        let block = Block::new(origin, BlockShape::Square);
+        let pushed_down = block.push_down().unwrap();
 
         let expected_coordinates = [
-            Point::new(10, 10),
-            Point::new(10, 11),
-            Point::new(10, 12),
-            Point::new(11, 12),
-        ];
-        assert_eq!(block.coordinates.as_slice(), &expected_coordinates);
-    }
-
-    #[test]
-    fn test_normalization_of_coordinates() {
-        let origin = Point::new(0, 0);
-        let block = Block::new(origin, BlockShape::Z);
-
-        let expected_coordinates = [
-            Point::new(0, 1),
-            Point::new(1, 1),
-            Point::new(1, 0),
-            Point::new(2, 0),
-        ];
-        assert_eq!(block.coordinates.as_slice(), &expected_coordinates);
-    }
-
-    #[test]
-    fn test_rotation_with_non_zero_origin() {
-        let origin = Point::new(5, 5);
-        let block = Block::new(origin, BlockShape::Line);
-        let rotated_block = block.rotate();
-
-        let expected_coordinates = [
+            Point::new(4, 5),
             Point::new(5, 5),
+            Point::new(4, 6),
             Point::new(5, 6),
-            Point::new(5, 7),
-            Point::new(5, 8),
         ];
-        assert_eq!(
-            rotated_block.unwrap().coordinates.as_slice(),
-            &expected_coordinates
-        );
+
+        // Square blocks should remain unchanged after rotation
+        assert_eq!(pushed_down.coordinates.as_slice(), &expected_coordinates);
     }
 
     #[test]

@@ -1,4 +1,5 @@
 mod block;
+mod board;
 mod point;
 
 fn main() {
