@@ -20,7 +20,7 @@ impl Board {
         self.filled.sort();
     }
 
-    pub fn clear_board(&mut self) {
+    pub fn clear_board(&mut self) -> i32{
         // Identify rows that need to be cleared
         let mut row_counts = vec![0; self.y_dim as usize];
         for point in &self.filled {
@@ -38,7 +38,7 @@ impl Board {
             .collect();
 
         if completed_rows.is_empty() {
-            return;
+            return 0
         }
 
         // Remove points in the completed rows
@@ -55,29 +55,27 @@ impl Board {
 
         // Sort filled points to maintain consistent rendering
         self.filled.sort_by_key(|p| (p.get_y(), p.get_x()));
+
+        completed_rows.len() as i32
     }
 
     pub fn block_touches(&self, block: &Block) -> bool {
-        // Check for overlapping with filled cells
+        // Check for overlapping with filled cells or the bottom of the board
         for block_point in &block.coordinates {
+            if block_point.get_y() >= self.y_dim {
+                return true; // Touching the bottom of the board
+            }
             for filled_point in &self.filled {
                 if block_point.get_x() == filled_point.get_x()
                     && block_point.get_y() == filled_point.get_y()
                 {
-                    return true;
+                    return true; // Overlapping with filled points
                 }
             }
         }
-
-        // Check if any block point touches or goes beyond the bottom of the board
-        for block_point in &block.coordinates {
-            if block_point.get_y() >= self.y_dim {
-                return true;
-            }
-        }
-
         false
     }
+    
 
     /// Places a block on the board by adding its points to the filled vector
     pub fn place_block(&mut self, block: &Block) {

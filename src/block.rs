@@ -127,13 +127,13 @@ impl Block {
             .iter()
             .map(|point| Point::new(point.get_x() + dx, point.get_y() + dy))
             .collect();
-
-        // Check if all points are within bounds
+    
+        // Ensure all points are within bounds
         if translated_coordinates.iter().all(|point| {
             point.get_x() >= 0
                 && point.get_x() < board_width
                 && point.get_y() >= 0
-                && point.get_y() < board_height
+                && point.get_y() <= board_height
         }) {
             Some(Block {
                 shape: self.shape,
@@ -143,6 +143,7 @@ impl Block {
             None
         }
     }
+    
 
     /// Rotates the block 90 degrees clockwise around its geometric center
     pub fn rotate(&self) -> Result<Block, Box<dyn Error>> {

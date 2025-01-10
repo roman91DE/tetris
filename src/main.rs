@@ -28,21 +28,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut game_over = false;
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(500);
+    let mut score = 0; // Initialize the score
 
     loop {
         // Draw the game state
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Percentage(90), Constraint::Percentage(10)])
+                .constraints([
+                    Constraint::Percentage(80), // Board
+                    Constraint::Percentage(20), // Score
+                ])
                 .split(f.size());
 
+            // Draw the board
             let board_widget = draw_board(&board, &current_block);
             f.render_widget(board_widget, chunks[0]);
 
-            let controls = Paragraph::new("Controls: ←, →, ↓ to move; R to rotate; Q to quit")
-                .block(TuiBlock::default().borders(Borders::ALL).title("Controls"));
-            f.render_widget(controls, chunks[1]);
+            // Draw the score
+            let score_widget = Paragraph::new(format!("Score: {}", score))
+                .block(TuiBlock::default().borders(Borders::ALL).title("Score"));
+            f.render_widget(score_widget, chunks[1]);
         })?;
 
         // Handle user input
@@ -97,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(moved_block) = current_block.translate(0, 1, board.x_dim, board.y_dim) {
                 if board.block_touches(&moved_block) {
                     board.place_block(&current_block);
-                    board.clear_board();
+                    score += board.clear_board(); // Update score based on cleared rows
                     current_block = Block::new(Point::new(4, 0), BlockShape::get_rand());
                     if board.block_touches(&current_block) {
                         game_over = true;
@@ -107,7 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             } else {
                 board.place_block(&current_block);
-                board.clear_board();
+                score += board.clear_board(); // Update score based on cleared rows
                 current_block = Block::new(Point::new(4, 0), BlockShape::get_rand());
                 if board.block_touches(&current_block) {
                     game_over = true;
@@ -156,10 +162,13 @@ fn draw_board<'a>(board: &Board, current_block: &Block) -> Paragraph<'a> {
         }
     }
 
+    // Render the board into a string
     let board_string = grid
         .into_iter()
-        .map(|row| row.into_iter().collect::<String>() + "\n")
-        .collect::<String>();
+        .map(|row| row.into_iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
 
     Paragraph::new(board_string).block(TuiBlock::default().borders(Borders::ALL).title("Board"))
 }
+
